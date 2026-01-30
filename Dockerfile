@@ -13,8 +13,8 @@ RUN npm ci --omit=dev
 
 COPY . .
 
-# Hugging Face Persistent Storage usually mounts at /data (runtime).
-# Create app-owned data directories safely.
+# Prepare persistent auth directory (Hugging Face mounts /data at runtime).
+# The "|| true" avoids build failure in environments where /data isn't writable at build-time.
 RUN mkdir -p /data/steny-bridge/auth && chown -R node:node /data || true
 
 USER node
