@@ -3,9 +3,8 @@
 /**
  * ============================================================
  * Mvemba Research Systems — Steny Bridge
- * Security Module (Scientific Implementation Notes)
- * - API key authentication for outbound send requests
- * - Optional HMAC signing for inbound events to n8n
+ * Security Module
+ * - API key authentication (header or query string)
  * ============================================================
  */
 
@@ -20,7 +19,15 @@ function safeEqual(a, b) {
 
 function requireApiKey(req, res, next) {
   const expected = process.env.BRIDGE_API_KEY || "";
-  const got = req.headers["x-api-key"] || req.headers["X-API-Key"] || "";
+
+  const gotHeader =
+    req.headers["x-api-key"] ||
+    req.headers["X-API-Key"] ||
+    req.headers["x-api-key".toLowerCase()];
+
+  const gotQuery = req.query?.key;
+
+  const got = gotHeader || gotQuery || "";
 
   if (!expected || !safeEqual(got, expected)) {
     return res.status(401).json({ error: "Unauthorized" });

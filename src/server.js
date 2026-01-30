@@ -4,13 +4,8 @@
  * ============================================================
  * Mvemba Research Systems — Steny Bridge
  * Secure HTTP Gateway + n8n Bridge
- * Scientific-grade operational constraints:
- * - Minimal public surface area
- * - API key auth for outbound send requests
- * - Rate limiting
- * - HMAC signature to n8n (optional but recommended)
- * - Strict input validation (Zod)
- * - Diagnostics endpoint (/diag) for network validation
+ * - /qr.png (protected) to scan QR as an image
+ * - /pairing-code (protected) to read the current pairing code
  * ============================================================
  */
 
@@ -25,7 +20,10 @@ const { z } = require("zod");
 const dns = require("dns").promises;
 const https = require("https");
 
-const { startWhatsApp } = require("./whatsapp");
+// QR image generator
+const QRCode = require("qrcode");
+
+const { startWhatsApp, getLastQr, getLastPairingCode } = require("./whatsapp");
 const { requireApiKey, signPayload } = require("./security");
 
 const app = express();
@@ -73,12 +71,37 @@ app.get("/diag", async (req, res) => {
     });
 
     r.on("error", (e) => resolve({ error: e.message }));
-    r.setTimeout(8000, () => {
-      r.destroy(new Error("timeout"));
-    });
+    r.setTimeout(8000, () => r.destroy(new Error("timeout")));
   });
 
   res.json(out);
+});
+
+/**
+ * Protected: get current pairing code (if available)
+ * Usage: https://YOUR_DOMAIN/pairing-code?key=BRIDGE_API_KEY
+ */
+app.get("/pairing-code", requireApiKey, (req, res) => {
+  const code = getLastPairingCode();
+  if (!code) return res.status(404).json({ error: "Pairing code not available" });
+  res.json({ pairingCode: code });
+});
+
+/**
+ * Protected: QR as PNG
+ * Usage: https://YOUR_DOMAIN/qr.png?key=BRIDGE_API_KEY
+ */
+app.get("/qr.png", requireApiKey, async (req, res) => {
+  const qr = getLastQr();
+  if (!qr) return res.status(404).send("QR not available");
+
+  try {
+    const png = await QRCode.toBuffer(qr, { type: "png", scale: 8, margin: 2 });
+    res.setHeader("Content-Type", "image/png");
+    res.status(200).send(png);
+  } catch (_) {
+    res.status(500).send("Failed to generate QR");
+  }
 });
 
 const SendSchema = z.object({
@@ -128,7 +151,6 @@ async function main() {
   sock = await startWhatsApp({
     onIncomingText: async ({ from, text }) => {
       const event = { from, text, timestamp: Date.now() };
-
       try {
         await postToN8n(event);
       } catch (_) {}

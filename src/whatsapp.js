@@ -4,23 +4,31 @@
  * ============================================================
  * Mvemba Research Systems — Steny Bridge
  * WhatsApp Web Interface Layer (Baileys)
- * Scientific-grade runtime design:
- * - Uses /data when available (HF persistent storage)
- * - Falls back to /tmp when /data is not writable
- * - Text-only MVP processing (extensible)
+ * - Pairing code support
+ * - QR capture for /qr.png endpoint
  * ============================================================
  */
 
 const fs = require("fs");
 const path = require("path");
 const pino = require("pino");
-const qrcode = require("qrcode-terminal");
 const {
   default: makeWASocket,
   useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion
 } = require("@whiskeysockets/baileys");
+
+let lastQr = null;
+let lastPairingCode = null;
+
+function getLastQr() {
+  return lastQr;
+}
+
+function getLastPairingCode() {
+  return lastPairingCode;
+}
 
 function pickWritableAuthDir() {
   const preferredBase = process.env.HF_PERSIST_DIR || "/data";
@@ -39,7 +47,6 @@ function pickWritableAuthDir() {
 
 async function startWhatsApp({ onIncomingText }) {
   const authDir = pickWritableAuthDir();
-
   const { state, saveCreds } = await useMultiFileAuthState(authDir);
   const { version } = await fetchLatestBaileysVersion();
 
@@ -52,11 +59,29 @@ async function startWhatsApp({ onIncomingText }) {
 
   sock.ev.on("creds.update", saveCreds);
 
+  // If not registered, try pairing-code (recommended for Render logs)
+  if (!sock.authState.creds.registered) {
+    const phone = String(process.env.WA_PHONE_NUMBER || "").replace(/\D/g, "");
+    if (phone) {
+      try {
+        const code = await sock.requestPairingCode(phone);
+        lastPairingCode = code;
+        console.log("WhatsApp pairing code:", code);
+      } catch (e) {
+        console.log("Failed to request pairing code:", e?.message || String(e));
+      }
+    } else {
+      console.log("WA_PHONE_NUMBER missing. Pairing code disabled.");
+    }
+  }
+
   sock.ev.on("connection.update", (update) => {
     const { connection, lastDisconnect, qr } = update;
 
+    // Capture QR for /qr.png (some devices prefer scanning)
     if (qr) {
-      qrcode.generate(qr, { small: true });
+      lastQr = qr;
+      console.log("QR updated. Open /qr.png?key=YOUR_BRIDGE_API_KEY to scan.");
     }
 
     if (connection === "close") {
@@ -90,4 +115,8 @@ async function startWhatsApp({ onIncomingText }) {
   return sock;
 }
 
-module.exports = { startWhatsApp };
+module.exports = {
+  startWhatsApp,
+  getLastQr,
+  getLastPairingCode
+};
