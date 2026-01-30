@@ -8,15 +8,20 @@ FROM node:20-slim
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci --omit=dev
+# Copy package definition
+COPY package.json ./
 
+# Install dependencies (no package-lock required)
+RUN npm install --omit=dev
+
+# Copy source code
 COPY . .
 
-# Prepare persistent auth directory (Hugging Face mounts /data at runtime).
-# The "|| true" avoids build failure in environments where /data isn't writable at build-time.
+# Prepare persistent auth directory (HF mounts /data at runtime)
+# Do not fail build if /data is not writable at build time
 RUN mkdir -p /data/steny-bridge/auth && chown -R node:node /data || true
 
+# Run as non-root user already provided by the image
 USER node
 
 ENV PORT=7860
