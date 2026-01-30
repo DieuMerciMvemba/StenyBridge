@@ -3,13 +3,13 @@
  * Mvemba Research Systems — Steny Bridge
  * WhatsApp Web Interface Layer (Baileys)
  * Scientific-grade runtime design:
- * - Auth state persisted under /data when available
- * - Runtime directory creation to avoid build-time /data issues
- * - Text-only MVP processing (extensible)
+ * - Uses /data when available (HF persistent storage)
+ * - Falls back to /tmp when /data is not writable
  * ============================================================
  */
 
 const fs = require("fs");
+const path = require("path");
 const pino = require("pino");
 const qrcode = require("qrcode-terminal");
 const {
@@ -19,17 +19,25 @@ const {
   fetchLatestBaileysVersion
 } = require("@whiskeysockets/baileys");
 
-function getAuthDir() {
-  // Hugging Face Persistent Storage mounts at /data (runtime)
-  const base = process.env.HF_PERSIST_DIR || "/data";
-  return `${base}/steny-bridge/auth`;
+function pickWritableAuthDir() {
+  const preferredBase = process.env.HF_PERSIST_DIR || "/data";
+  const preferred = path.join(preferredBase, "steny-bridge", "auth");
+
+  try {
+    // Try to ensure /data exists and is writable
+    fs.mkdirSync(preferred, { recursive: true });
+    fs.accessSync(preferred, fs.constants.W_OK);
+    return preferred;
+  } catch (_) {
+    // Fallback: /tmp is writable in containers
+    const fallback = path.join("/tmp", "steny-bridge", "auth");
+    fs.mkdirSync(fallback, { recursive: true });
+    return fallback;
+  }
 }
 
 async function startWhatsApp({ onIncomingText }) {
-  const authDir = getAuthDir();
-
-  // Ensure directory exists at runtime
-  fs.mkdirSync(authDir, { recursive: true });
+  const authDir = pickWritableAuthDir();
 
   const { state, saveCreds } = await useMultiFileAuthState(authDir);
   const { version } = await fetchLatestBaileysVersion();
@@ -47,7 +55,6 @@ async function startWhatsApp({ onIncomingText }) {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
-      // QR is shown in Space logs; scan with the WhatsApp mobile app
       qrcode.generate(qr, { small: true });
     }
 
@@ -73,7 +80,6 @@ async function startWhatsApp({ onIncomingText }) {
         msg.message.extendedTextMessage?.text ||
         "";
 
-      // MVP: only text
       if (!text) continue;
 
       await onIncomingText({ from, text });
