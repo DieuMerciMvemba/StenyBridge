@@ -1,10 +1,11 @@
+"use strict";
+
 /**
  * ============================================================
  * Mvemba Research Systems — Steny Bridge
  * Security Module (Scientific Implementation Notes)
- * - API key authentication
- * - Optional HMAC signing for n8n webhook events
- * - Input validation helpers
+ * - API key authentication for outbound send requests
+ * - Optional HMAC signing for inbound events to n8n
  * ============================================================
  */
 
@@ -19,7 +20,8 @@ function safeEqual(a, b) {
 
 function requireApiKey(req, res, next) {
   const expected = process.env.BRIDGE_API_KEY || "";
-  const got = req.headers["x-api-key"] || "";
+  const got = req.headers["x-api-key"] || req.headers["X-API-Key"] || "";
+
   if (!expected || !safeEqual(got, expected)) {
     return res.status(401).json({ error: "Unauthorized" });
   }
@@ -27,8 +29,8 @@ function requireApiKey(req, res, next) {
 }
 
 /**
- * HMAC signature for outbound events to n8n:
- * header: x-steny-signature: sha256=<hex>
+ * HMAC signature for events sent to n8n
+ * Header: x-steny-signature: sha256=<hex>
  */
 function signPayload(payload, secret) {
   const h = crypto.createHmac("sha256", secret);
