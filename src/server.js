@@ -1,3 +1,5 @@
+"use strict";
+
 /**
  * ============================================================
  * Mvemba Research Systems — Steny Bridge
@@ -8,7 +10,7 @@
  * - Rate limiting
  * - HMAC signature to n8n (optional but recommended)
  * - Strict input validation (Zod)
- * - Runtime diagnostics endpoint (/diag) for network validation
+ * - Diagnostics endpoint (/diag) for network validation
  * ============================================================
  */
 
@@ -47,9 +49,6 @@ const ALLOWED_TO_PREFIX = process.env.ALLOWED_TO_PREFIX || "";
 
 let sock = null;
 
-/**
- * Root endpoint (prevents HF "connection not allowed" confusion)
- */
 app.get("/", (req, res) => {
   res.status(200).send("Steny Bridge is running.");
 });
@@ -58,12 +57,6 @@ app.get("/health", (req, res) => {
   res.json({ ok: true, whatsappReady: Boolean(sock) });
 });
 
-/**
- * Diagnostics endpoint
- * Use it to confirm if the container can resolve and reach WhatsApp Web.
- * - DNS check for web.whatsapp.com
- * - HTTPS check to a neutral endpoint (google.com)
- */
 app.get("/diag", async (req, res) => {
   const out = {};
 
@@ -97,4 +90,54 @@ app.post("/v1/send", requireApiKey, async (req, res) => {
   try {
     if (!sock) return res.status(503).json({ error: "WhatsApp not ready" });
 
-    const parse
+    const parsed = SendSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid payload" });
+
+    const { to, text } = parsed.data;
+
+    if (ALLOWED_TO_PREFIX) {
+      if (!to.startsWith(ALLOWED_TO_PREFIX)) {
+        return res.status(403).json({ error: "Recipient not allowed" });
+      }
+    }
+
+    await sock.sendMessage(to, { text });
+    return res.json({ sent: true });
+  } catch (_) {
+    return res.status(500).json({ error: "Send failed" });
+  }
+});
+
+async function postToN8n(event) {
+  if (!N8N_WEBHOOK_INBOUND) return;
+
+  const headers = {};
+  if (N8N_HMAC_SECRET) {
+    headers["x-steny-signature"] = signPayload(event, N8N_HMAC_SECRET);
+  }
+
+  await axios.post(N8N_WEBHOOK_INBOUND, event, {
+    headers,
+    timeout: 15000
+  });
+}
+
+async function main() {
+  console.log("Steny Bridge booting...");
+
+  sock = await startWhatsApp({
+    onIncomingText: async ({ from, text }) => {
+      const event = { from, text, timestamp: Date.now() };
+
+      try {
+        await postToN8n(event);
+      } catch (_) {}
+    }
+  });
+
+  app.listen(PORT, () => {
+    console.log(`Steny Bridge listening on port ${PORT}`);
+  });
+}
+
+main().catch(() => process.exit(1));
