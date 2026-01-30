@@ -87,6 +87,7 @@ async function postToN8n(event) {
 }
 
 async function main() {
+  console.log("Steny Bridge booting...");
   sock = await startWhatsApp({
     onIncomingText: async ({ from, text }) => {
       // Conservative policy: only handle inbound user messages.
