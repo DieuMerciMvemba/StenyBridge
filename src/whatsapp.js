@@ -3,12 +3,13 @@
  * Mvemba Research Systems — Steny Bridge
  * WhatsApp Web Interface Layer (Baileys)
  * Scientific-grade runtime design:
- * - Multi-file auth state persisted under /data when available
- * - Reconnect logic with conservative defaults
+ * - Auth state persisted under /data when available
+ * - Runtime directory creation to avoid build-time /data issues
  * - Text-only MVP processing (extensible)
  * ============================================================
  */
 
+const fs = require("fs");
 const pino = require("pino");
 const qrcode = require("qrcode-terminal");
 const {
@@ -20,17 +21,19 @@ const {
 
 function getAuthDir() {
   // Hugging Face Persistent Storage mounts at /data (runtime)
-  // If persistent storage is enabled, use /data to survive restarts.
-  // Otherwise fall back to local ephemeral directory.
   const base = process.env.HF_PERSIST_DIR || "/data";
   return `${base}/steny-bridge/auth`;
 }
 
 async function startWhatsApp({ onIncomingText }) {
   const authDir = getAuthDir();
-  const { state, saveCreds } = await useMultiFileAuthState(authDir);
 
+  // Ensure directory exists at runtime
+  fs.mkdirSync(authDir, { recursive: true });
+
+  const { state, saveCreds } = await useMultiFileAuthState(authDir);
   const { version } = await fetchLatestBaileysVersion();
+
   const sock = makeWASocket({
     version,
     logger: pino({ level: process.env.LOG_LEVEL || "info" }),
@@ -44,7 +47,7 @@ async function startWhatsApp({ onIncomingText }) {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
-      // QR appears in Space logs; scan with the WhatsApp mobile app
+      // QR is shown in Space logs; scan with the WhatsApp mobile app
       qrcode.generate(qr, { small: true });
     }
 
@@ -70,9 +73,10 @@ async function startWhatsApp({ onIncomingText }) {
         msg.message.extendedTextMessage?.text ||
         "";
 
+      // MVP: only text
       if (!text) continue;
 
-      await onIncomingText({ from, text, raw: msg });
+      await onIncomingText({ from, text });
     }
   });
 
