@@ -6,7 +6,7 @@
 
 FROM node:20-slim
 
-# Install required OS packages (git needed by some npm dependencies)
+# Some npm packages may require git during installation (slim images don't include it).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     ca-certificates \
