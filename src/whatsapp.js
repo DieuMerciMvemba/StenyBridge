@@ -1,3 +1,5 @@
+"use strict";
+
 /**
  * ============================================================
  * Mvemba Research Systems — Steny Bridge
@@ -5,6 +7,7 @@
  * Scientific-grade runtime design:
  * - Uses /data when available (HF persistent storage)
  * - Falls back to /tmp when /data is not writable
+ * - Text-only MVP processing (extensible)
  * ============================================================
  */
 
@@ -24,12 +27,10 @@ function pickWritableAuthDir() {
   const preferred = path.join(preferredBase, "steny-bridge", "auth");
 
   try {
-    // Try to ensure /data exists and is writable
     fs.mkdirSync(preferred, { recursive: true });
     fs.accessSync(preferred, fs.constants.W_OK);
     return preferred;
   } catch (_) {
-    // Fallback: /tmp is writable in containers
     const fallback = path.join("/tmp", "steny-bridge", "auth");
     fs.mkdirSync(fallback, { recursive: true });
     return fallback;
