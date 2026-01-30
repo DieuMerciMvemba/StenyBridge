@@ -1,12 +1,11 @@
 # ============================================================
 # Mvemba Research Systems — Steny Bridge
 # Scientific-grade WhatsApp Web Automation Bridge (Baileys)
-# Deployment Target: Hugging Face Docker Space
+# Targets: Render + Hugging Face
 # ============================================================
 
 FROM node:20-slim
 
-# Some npm packages may require git during installation (slim images don't include it).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     ca-certificates \
@@ -21,7 +20,5 @@ COPY . .
 
 USER node
 
-ENV PORT=7860
-EXPOSE 7860
-
+# Do not hardcode PORT here (Render injects PORT; HF can default inside the app)
 CMD ["node", "src/server.js"]

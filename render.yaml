@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: steny-bridge
+    env: docker
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: LOG_LEVEL
+        value: info
+      # Set these in Render dashboard as "Secret" after first deploy:
+      # N8N_WEBHOOK_INBOUND
+      # BRIDGE_API_KEY
+      # N8N_HMAC_SECRET
+      # ALLOWED_TO_PREFIX
