@@ -6,9 +6,6 @@
 
 FROM node:20-slim
 
-# Security: create a non-root user
-RUN useradd -m -u 1000 mvemba && mkdir -p /app && chown -R mvemba:mvemba /app
-
 WORKDIR /app
 
 COPY package*.json ./
@@ -16,9 +13,12 @@ RUN npm ci --omit=dev
 
 COPY . .
 
-USER mvemba
+# Hugging Face Persistent Storage usually mounts at /data (runtime).
+# Create app-owned data directories safely.
+RUN mkdir -p /data/steny-bridge/auth && chown -R node:node /data || true
 
-# Hugging Face expects one externally exposed port (commonly 7860)
+USER node
+
 ENV PORT=7860
 EXPOSE 7860
 
